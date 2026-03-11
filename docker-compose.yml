@@ -1,0 +1,191 @@
+# EdgeX Foundry v3.1 — No-Security profile
+# Trimmed for Phase 1: Virtual Device → Mosquitto (MQTT) → Django consumer
+#
+# Services commented out (not needed in Phase 1):
+#   - device-rest          (only using virtual device)
+#   - app-rules-engine     (replaced by app-mqtt-export)
+#   - rules-engine         (eKuiper — not needed)
+#   - support-notifications
+#   - support-scheduler
+
+name: edgex
+
+networks:
+  edgex-network:
+    driver: bridge
+
+volumes:
+  consul-data:
+  db-data:
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  consul:
+    image: hashicorp/consul:1.16
+    container_name: edgex-core-consul
+    hostname: edgex-core-consul
+    networks:
+      - edgex-network
+    ports:
+      - "8500:8500"
+    volumes:
+      - consul-data:/consul/data
+    command: agent -ui -bootstrap -server -client 0.0.0.0
+
+  database:
+    image: redis:7.0.11-alpine
+    container_name: edgex-redis
+    hostname: edgex-redis
+    networks:
+      - edgex-network
+    volumes:
+      - db-data:/data
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: edgex-mosquitto
+    hostname: mosquitto
+    networks:
+      - edgex-network
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:z
+
+  # ── EdgeX Bootstrap ─────────────────────────────────────────────────────────
+
+  core-common-config-bootstrapper:
+    image: edgexfoundry/core-common-config-bootstrapper:3.1.1
+    container_name: edgex-core-common-config-bootstrapper
+    hostname: edgex-core-common-config-bootstrapper
+    networks:
+      - edgex-network
+    environment:
+      ALL_SERVICES_DATABASE_HOST: edgex-redis
+      ALL_SERVICES_MESSAGEBUS_HOST: edgex-redis
+      ALL_SERVICES_REGISTRY_HOST: edgex-core-consul
+      APP_SERVICES_CLIENTS_CORE_METADATA_HOST: edgex-core-metadata
+      DEVICE_SERVICES_CLIENTS_CORE_METADATA_HOST: edgex-core-metadata
+      EDGEX_SECURITY_SECRET_STORE: "false"
+    depends_on:
+      - consul
+      - database
+
+  # ── EdgeX Core Services ─────────────────────────────────────────────────────
+
+  core-metadata:
+    image: edgexfoundry/core-metadata:3.1.1
+    container_name: edgex-core-metadata
+    hostname: edgex-core-metadata
+    networks:
+      - edgex-network
+    ports:
+      - "59881:59881"
+    environment:
+      SERVICE_HOST: edgex-core-metadata
+      EDGEX_SECURITY_SECRET_STORE: "false"
+    depends_on:
+      - consul
+      - database
+      - core-common-config-bootstrapper
+
+  core-data:
+    image: edgexfoundry/core-data:3.1.1
+    container_name: edgex-core-data
+    hostname: edgex-core-data
+    networks:
+      - edgex-network
+    ports:
+      - "59880:59880"
+    environment:
+      SERVICE_HOST: edgex-core-data
+      EDGEX_SECURITY_SECRET_STORE: "false"
+    depends_on:
+      - consul
+      - database
+      - core-common-config-bootstrapper
+
+  core-command:
+    image: edgexfoundry/core-command:3.1.1
+    container_name: edgex-core-command
+    hostname: edgex-core-command
+    networks:
+      - edgex-network
+    ports:
+      - "59882:59882"
+    environment:
+      SERVICE_HOST: edgex-core-command
+      EDGEX_SECURITY_SECRET_STORE: "false"
+      # External MQTT disabled — we use app-mqtt-export for outbound data
+      EXTERNALMQTT_ENABLED: "false"
+    depends_on:
+      - consul
+      - database
+      - core-common-config-bootstrapper
+      - core-metadata
+
+  # ── EdgeX Device Services ───────────────────────────────────────────────────
+
+  device-virtual:
+    image: edgexfoundry/device-virtual:3.1.1
+    container_name: edgex-device-virtual
+    hostname: edgex-device-virtual
+    networks:
+      - edgex-network
+    ports:
+      - "59900:59900"
+    environment:
+      SERVICE_HOST: edgex-device-virtual
+      EDGEX_SECURITY_SECRET_STORE: "false"
+    depends_on:
+      - consul
+      - database
+      - core-common-config-bootstrapper
+      - core-metadata
+      - core-data
+
+  # device-rest:   # not needed in Phase 1 — using virtual device only
+
+  # ── EdgeX App Services ──────────────────────────────────────────────────────
+
+  app-mqtt-export:
+    image: edgexfoundry/app-service-configurable:3.1.1
+    container_name: edgex-app-mqtt-export
+    hostname: edgex-app-mqtt-export
+    networks:
+      - edgex-network
+    environment:
+      SERVICE_HOST: edgex-app-mqtt-export
+      EDGEX_SECURITY_SECRET_STORE: "false"
+      EDGEX_PROFILE: mqtt-export
+      # Forward all EdgeX events to Mosquitto on the nerva/events topic
+      WRITABLE_PIPELINE_FUNCTIONS_MQTTEXPORT_PARAMETERS_BROKERADDRESS: tcp://mosquitto:1883
+      WRITABLE_PIPELINE_FUNCTIONS_MQTTEXPORT_PARAMETERS_TOPIC: nerva/events
+    depends_on:
+      - consul
+      - database
+      - core-common-config-bootstrapper
+      - core-data
+      - mosquitto
+
+  # app-rules-engine:  # not needed — replaced by app-mqtt-export
+  # rules-engine:      # not needed — eKuiper not used in Phase 1
+
+  # ── EdgeX UI ────────────────────────────────────────────────────────────────
+
+  ui:
+    image: edgexfoundry/edgex-ui:3.1.0
+    container_name: edgex-ui
+    hostname: edgex-ui
+    networks:
+      - edgex-network
+    ports:
+      - "4000:4000"
+    environment:
+      EDGEX_SECURITY_SECRET_STORE: "false"
+
+  # ── Commented out (not needed in Phase 1) ───────────────────────────────────
+  # support-notifications:  # not needed yet
+  # support-scheduler:      # not needed yet
