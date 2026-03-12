@@ -7,6 +7,10 @@
 #   - rules-engine         (eKuiper — not needed)
 #   - support-notifications
 #   - support-scheduler
+#
+# Note: no container_name or hostname directives — Coolify manages container
+# naming. Services reference each other by compose service name (consul,
+# database, mosquitto, etc.) which Docker Compose resolves via internal DNS.
 
 networks:
   edgex-network:
@@ -28,8 +32,6 @@ services:
 
   consul:
     image: hashicorp/consul:1.16
-    container_name: edgex-core-consul
-    hostname: edgex-core-consul
     networks:
       - edgex-network
     ports:
@@ -40,8 +42,6 @@ services:
 
   database:
     image: redis:7.0.11-alpine
-    container_name: edgex-redis
-    hostname: edgex-redis
     networks:
       - edgex-network
     volumes:
@@ -49,8 +49,6 @@ services:
 
   mosquitto:
     image: eclipse-mosquitto:2
-    container_name: edgex-mosquitto
-    hostname: mosquitto
     networks:
       - edgex-network
     ports:
@@ -63,16 +61,14 @@ services:
 
   core-common-config-bootstrapper:
     image: edgexfoundry/core-common-config-bootstrapper:3.1.1
-    container_name: edgex-core-common-config-bootstrapper
-    hostname: edgex-core-common-config-bootstrapper
     networks:
       - edgex-network
     environment:
-      ALL_SERVICES_DATABASE_HOST: edgex-redis
-      ALL_SERVICES_MESSAGEBUS_HOST: edgex-redis
-      ALL_SERVICES_REGISTRY_HOST: edgex-core-consul
-      APP_SERVICES_CLIENTS_CORE_METADATA_HOST: edgex-core-metadata
-      DEVICE_SERVICES_CLIENTS_CORE_METADATA_HOST: edgex-core-metadata
+      ALL_SERVICES_DATABASE_HOST: database
+      ALL_SERVICES_MESSAGEBUS_HOST: database
+      ALL_SERVICES_REGISTRY_HOST: consul
+      APP_SERVICES_CLIENTS_CORE_METADATA_HOST: core-metadata
+      DEVICE_SERVICES_CLIENTS_CORE_METADATA_HOST: core-metadata
       EDGEX_SECURITY_SECRET_STORE: "false"
     depends_on:
       - consul
@@ -82,14 +78,12 @@ services:
 
   core-metadata:
     image: edgexfoundry/core-metadata:3.1.1
-    container_name: edgex-core-metadata
-    hostname: edgex-core-metadata
     networks:
       - edgex-network
     ports:
       - "59881:59881"
     environment:
-      SERVICE_HOST: edgex-core-metadata
+      SERVICE_HOST: core-metadata
       EDGEX_SECURITY_SECRET_STORE: "false"
     depends_on:
       - consul
@@ -98,14 +92,12 @@ services:
 
   core-data:
     image: edgexfoundry/core-data:3.1.1
-    container_name: edgex-core-data
-    hostname: edgex-core-data
     networks:
       - edgex-network
     ports:
       - "59880:59880"
     environment:
-      SERVICE_HOST: edgex-core-data
+      SERVICE_HOST: core-data
       EDGEX_SECURITY_SECRET_STORE: "false"
     depends_on:
       - consul
@@ -114,14 +106,12 @@ services:
 
   core-command:
     image: edgexfoundry/core-command:3.1.1
-    container_name: edgex-core-command
-    hostname: edgex-core-command
     networks:
       - edgex-network
     ports:
       - "59882:59882"
     environment:
-      SERVICE_HOST: edgex-core-command
+      SERVICE_HOST: core-command
       EDGEX_SECURITY_SECRET_STORE: "false"
       # External MQTT disabled — we use app-mqtt-export for outbound data
       EXTERNALMQTT_ENABLED: "false"
@@ -135,14 +125,12 @@ services:
 
   device-virtual:
     image: edgexfoundry/device-virtual:3.1.1
-    container_name: edgex-device-virtual
-    hostname: edgex-device-virtual
     networks:
       - edgex-network
     ports:
       - "59900:59900"
     environment:
-      SERVICE_HOST: edgex-device-virtual
+      SERVICE_HOST: device-virtual
       EDGEX_SECURITY_SECRET_STORE: "false"
     depends_on:
       - consul
@@ -157,12 +145,10 @@ services:
 
   app-mqtt-export:
     image: edgexfoundry/app-service-configurable:3.1.1
-    container_name: edgex-app-mqtt-export
-    hostname: edgex-app-mqtt-export
     networks:
       - edgex-network
     environment:
-      SERVICE_HOST: edgex-app-mqtt-export
+      SERVICE_HOST: app-mqtt-export
       EDGEX_SECURITY_SECRET_STORE: "false"
       EDGEX_PROFILE: mqtt-export
       # Forward all EdgeX events to Mosquitto on the nerva/events topic
@@ -182,8 +168,6 @@ services:
 
   ui:
     image: edgexfoundry/edgex-ui:3.1.0
-    container_name: edgex-ui
-    hostname: edgex-ui
     networks:
       - edgex-network
     ports:
