@@ -8,8 +8,6 @@
 #   - support-notifications
 #   - support-scheduler
 
-name: edgex
-
 networks:
   edgex-network:
     driver: bridge
@@ -17,6 +15,12 @@ networks:
 volumes:
   consul-data:
   db-data:
+
+configs:
+  mosquitto-conf:
+    content: |
+      listener 1883
+      allow_anonymous true
 
 services:
 
@@ -51,8 +55,9 @@ services:
       - edgex-network
     ports:
       - "1883:1883"
-    volumes:
-      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:z
+    configs:
+      - source: mosquitto-conf
+        target: /mosquitto/config/mosquitto.conf
 
   # ── EdgeX Bootstrap ─────────────────────────────────────────────────────────
 
